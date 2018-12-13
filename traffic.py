@@ -71,8 +71,8 @@ print(x_train.shape, x_val.shape, y_train.shape, y_val.shape)
 
 
 model = Sequential()
-model.add(LSTM(1000, input_length=x_train.shape[1], input_dim=x_train.shape[2]))
-model.add(Dense(500, activation='relu'))
+model.add(CuDNNLSTM(1000, input_shape=(24, 15), return_sequences=True))
+model.add(CuDNNLSTM(500))
 model.add(Dense(1, activation='relu'))
 
 optAMX = Adamax(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0)
@@ -83,6 +83,6 @@ model.compile(loss='mse', optimizer=optRMS)
 checkpoint = ModelCheckpoint('best.model', monitor='val_loss', verbose=1, 
     save_best_only=True, mode='min')
 # LearningRateScheduler(schedule, verbose=0)
-callbacks_list = [checkpoint ]
+callbacks_list = [checkpoint]
 model.fit(x_train, y_train, validation_data=(x_val, y_val), epochs=10000, batch_size=24,
     callbacks=callbacks_list)
