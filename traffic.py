@@ -2,8 +2,8 @@ import pandas as pd
 import numpy as np
 import os
 from keras.callbacks import ModelCheckpoint, LearningRateScheduler
-from keras.layers import concatenate, SimpleRNN, Dense, Dropout, Activation, Flatten, LSTM, TimeDistributed, RepeatVector, CuDNNLSTM, RNN
-from keras.models import Sequential, Input, Model
+from keras.layers import Dense, Dropout, Activation, LSTM, CuDNNLSTM, CuDNNGRU, ReLU, Conv1D, MaxPooling1D
+from keras.models import Sequential, Input, Model, load_model
 from keras.optimizers import RMSprop, Adamax, SGD
 from sklearn import preprocessing
 from sklearn.utils import shuffle
@@ -16,19 +16,26 @@ def datapreproccess(csv):
     df = pd.read_csv(csv)
     df = df[['Timestamp', 'Average Speed', 'Total Flow', 'Average Occupancy', 'Lane 1 Flow', 'Lane 1 Average Occupancy', 'Lane 1 Average Speed', 'Lane 2 Flow', 'Lane 2 Average Occupancy'
         , 'Lane 2 Average Speed', 'Lane 3 Flow', 'Lane 3 Average Occupancy', 'Lane 3 Average Speed', 'Lane 4 Flow', 'Lane 4 Average Occupancy', 'Lane 4 Average Speed']]
-    df['Average  Speed_t2'] = df['Average Speed'].shift(-2)
+    df['Average  Speed_t2'] = df['Average Speed'].shift(-6)
     df['Average  Speed_t2'] = df['Average  Speed_t2'].fillna(df['Average  Speed_t2'].mean())
     df['Timestamp'] = pd.to_datetime(df['Timestamp'])
     df['date'] = df['Timestamp'].dt.day
     df['day'] = df['Timestamp'].dt.dayofweek
     df['hour'] = df['Timestamp'].dt.hour
     df['minute'] = df['Timestamp'].dt.minute
-    colist = ['Average  Speed_t2', 'Average Speed', 'Total Flow', 'Average Occupancy', 'Lane 1 Flow', 'Lane 1 Average Occupancy', 'Lane 1 Average Speed', 'Lane 2 Flow', 'Lane 2 Average Occupancy'
-        , 'Lane 2 Average Speed', 'Lane 3 Flow', 'Lane 3 Average Occupancy', 'Lane 3 Average Speed', 'Lane 4 Flow', 'Lane 4 Average Occupancy', 'Lane 4 Average Speed']
-    # colist = ['Average  Speed_t2', 'Average Speed']
+    colist = ['Average  Speed_t2', 
+        'Average Speed', 'Total Flow', 'Average Occupancy', 
+        'Lane 1 Flow', 'Lane 1 Average Occupancy', 'Lane 1 Average Speed',
+        'Lane 2 Flow', 'Lane 2 Average Occupancy', 'Lane 2 Average Speed',
+        'Lane 3 Flow', 'Lane 3 Average Occupancy', 'Lane 3 Average Speed',
+        'Lane 4 Flow', 'Lane 4 Average Occupancy', 'Lane 4 Average Speed']
+    # colist = ['Average  Speed_t2', 'Average  Speed_t4', 'Average  Speed_t3', 'Average  Speed_t1', 'Average Speed',
+    # 'Lane 1 Average Speed', 'Lane 2 Average Speed', 'Lane 3 Average Speed', 'Lane 4 Average Speed']
+    # colist = ['Average  Speed_t2', 'Average Speed', 'Total Flow', 'Average Occupancy', 'day', 'hour', 'minute']
+    # colist = ['Average  Speed_t2', 'Average Speed', 'Total Flow', 'Average Occupancy']
     df = df.reindex(columns=colist)
     df_norm = normalize(df)
-    feature, label= buildTrain(df, df_norm, 24, 1)
+    feature, label= buildTrain(df, df_norm, 1000, 1)
 
     # feature = data[:, 1:]
     return label, feature
@@ -62,8 +69,8 @@ def splitData(X,Y,rate):
     return X_train, Y_train, X_val, Y_val
 
 
-label, feature = datapreproccess('traindata.csv')
-feature, label = shuffle(feature, label)
+label, feature = datapreproccess('5weeks_traffic.csv')
+# feature, label = shuffle(feature, label)
 x_train, y_train, x_val, y_val = splitData(feature, label, VALIDATION_SPLIT)
 # y_train = y_train[:, np.newaxis]
 # y_val = y_val[:, np.newaxis]
@@ -71,18 +78,63 @@ print(x_train.shape, x_val.shape, y_train.shape, y_val.shape)
 
 
 model = Sequential()
-model.add(CuDNNLSTM(1000, input_shape=(24, 15), return_sequences=True))
-model.add(CuDNNLSTM(500))
+# model.add(Dropout(0.2))
+# model.add(CuDNNLSTM(20, input_shape=(100, 8), return_sequences=True))
+# model.add(Activation('relu'))
+# model.add(CuDNNLSTM(15, return_sequences=True))
+# model.add(Activation('relu'))
+# model.add(CuDNNLSTM(10, return_sequences=False))
+# model.add(Activation('tanh'))
+# model.add(RepeatVector(1))
+# model.add(CuDNNLSTM(10, return_sequences=True))
+# model.add(Activation('tanh'))
+# model.add(CuDNNLSTM(15, return_sequences=True))
+# model.add(Activation('relu'))
+# model.add(CuDNNLSTM(20, return_sequences=True))
+# model.add(Activation('relu'))
+# model.add(TimeDistributed(Dense(10, activation='relu')))
+# model.add(TimeDistributed(Dense(1)))
+
+model.add(Conv1D(filters=64, kernel_size=2, padding='valid', activation='relu', input_shape=(1000,15)))
+model.add(Conv1D(filters=64, kernel_size=2, padding='valid', activation='relu'))
+model.add(MaxPooling1D(pool_size=3))
+model.add(CuDNNGRU(200))
+model.add(Activation('relu'))
+model.add(Dense(100, activation='relu'))
 model.add(Dense(1, activation='relu'))
+
+# model.add(CuDNNGRU(10, input_shape=(3000, 6), return_sequences=False))
+# model.add(Activation('relu'))
+# # model.add(Dropout(0.2))
+# model.add(Dense(100))
+# # model.add(ReLU(max_value=50))
+# model.add(Activation('relu'))
+# model.add(Dense(1))
+# # model.add(ReLU(max_value=74.4, threshold=12.9))
+# model.add(Activation('relu'))
 
 optAMX = Adamax(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0)
 optSGD = SGD(lr=0.001, momentum=0.0, decay=0.0, nesterov=False)
-optRMS = RMSprop(lr=0.0005, rho=0.9, epsilon=None, decay=0.0)
-model.summary()
+optRMS = RMSprop(lr=0.0001, rho=0.9, epsilon=None, decay=0.0)
+checkpoint = ModelCheckpoint('best.model', monitor='val_loss', verbose=1, save_best_only=True, mode='min')
 model.compile(loss='mse', optimizer=optRMS)
-checkpoint = ModelCheckpoint('best.model', monitor='val_loss', verbose=1, 
-    save_best_only=True, mode='min')
 # LearningRateScheduler(schedule, verbose=0)
 callbacks_list = [checkpoint]
-model.fit(x_train, y_train, validation_data=(x_val, y_val), epochs=10000, batch_size=24,
+model.summary()
+model.load_weights('best.model')
+model.fit(x_train, y_train, validation_data=(x_val, y_val), epochs=3000, batch_size=18,
     callbacks=callbacks_list)
+
+model.load_weights('best.model')
+array = model.predict(x=[x_train])
+ans = [] 
+for row in array: 
+    ans.append(row[0])
+# print(ans)
+
+i = 0
+with open('ans1.csv', 'w') as f:
+    for a in array:
+        f.write(str(i) + ',' + str(round(a[0], 1)) + '\n')
+        i += 1
+print(i)
